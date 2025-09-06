@@ -1,0 +1,22 @@
+#Core server and utilities
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+python-multipart
+requests
+email-validator
+
+#Supabase client
+supabase
+gotrue
+
+#LangChain & LangGraph for AI orchestration
+langchain
+langgraph
+langchain_core
+langchain_community
+
+#LLM Providers
+langchain_google_genai
+langchain_groq
