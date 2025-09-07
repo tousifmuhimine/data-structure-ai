@@ -4,6 +4,51 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 
 const BACKEND_URL = 'http://127.0.0.1:8000/api/chat'; // Fixed: added /api prefix back
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { sessionId: string } }
+) {
+  try {
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ 
+      cookies: () => cookieStore 
+    });
+    
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+
+    // Query messages for this session from Supabase
+    const { data: messages, error } = await supabase
+      .from('chat_messages')
+      .select('role, content')
+      .eq('session_id', params.sessionId)
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching messages:', error);
+      return new Response(JSON.stringify({ error: 'Failed to fetch messages' }), { status: 500 });
+    }
+
+    // Convert to the format your frontend expects
+    const formattedMessages = messages?.map(msg => ({
+      role: msg.role,
+      text: msg.content
+    })) || [];
+
+    return new Response(JSON.stringify(formattedMessages), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('GET messages error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to load messages' }), { status: 500 });
+  }
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { sessionId: string } }

@@ -116,6 +116,8 @@ async def generate_events(session_id: UUID, messages: List[HistoryMessage], supa
     
     async for event in app_graph.astream(inputs, stream_mode="values"):
         last_message = event["messages"][-1]
+        # ADD THIS DEBUG LINE:
+        print(f"DEBUG: Message content: {repr(last_message.content)}")
         
         if isinstance(last_message, AIMessage):
             if isinstance(last_message.content, str) and "<thinking>" in last_message.content:

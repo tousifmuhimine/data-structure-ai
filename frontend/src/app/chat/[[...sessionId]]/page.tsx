@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Loader2, Brain } from 'lucide-react';
+import MermaidDiagram from '../../../components/MermaidDiagram';
 
 interface Message {
   id: string;
@@ -32,6 +33,21 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
     messageId: ''
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // ADD THIS LINE HERE:
+  const currentThoughtsRef = useRef<string[]>([]);
+
+  // ADD THE FUNCTION RIGHT HERE:
+  const extractMermaidCode = (content: string) => {
+    const mermaidMatch = content.match(/%%MERMAID%%([\s\S]*?)%%\/MERMAID%%/);
+    if (mermaidMatch) {
+      return {
+        hasMermaid: true,
+        mermaidCode: mermaidMatch[1].trim(),
+        textContent: content.replace(/%%MERMAID%%([\s\S]*?)%%\/MERMAID%%/, '').trim()
+      };
+    }
+    return { hasMermaid: false, mermaidCode: '', textContent: content };
+  };
 
   // Function to clear error messages
   const clearErrorMessages = () => {
@@ -55,7 +71,7 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
       if (!sessionId) return;
       
       try {
-        const response = await fetch(`/api/chat/${sessionId}`);
+        const response = await fetch(`/api/sessions/${sessionId}/messages`);
         if (response.ok) {
           const historyMessages = await response.json();
           const formattedMessages: Message[] = historyMessages.map((msg: any, index: number) => ({
@@ -92,9 +108,12 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
     
     // Create a unique ID for this AI response and start thinking
     const aiMessageId = (Date.now() + 1).toString();
+
+    // ADD THIS LINE RIGHT HERE:
+    currentThoughtsRef.current = [];
     setThinking({ 
       isThinking: true, 
-      currentThought: 'Starting to think...', 
+      currentThought: 'Starting to think...',
       thoughts: ['Starting to think...'],
       messageId: aiMessageId
     });
@@ -175,6 +194,7 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
       const decoder = new TextDecoder();
       let aiResponse = '';
       let finalResponseReceived = false;
+      
 
       if (reader) {
         while (true) {
@@ -195,6 +215,9 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
                 console.log('Parsed SSE data:', data);
                 
                 if (data.type === 'thinking') {
+
+                  // Add to ref (synchronous)
+                  currentThoughtsRef.current = [...currentThoughtsRef.current, data.content];
                   // Add new thinking step to the progression
                   setThinking(prev => ({ 
                     ...prev,
@@ -212,11 +235,13 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
                     role: 'ai',
                     content: aiResponse,
                     timestamp: new Date(),
-                    thinkingProcess: [...thinking.thoughts] // Store the complete thinking journey
+                    thinkingProcess: [...currentThoughtsRef.current] // ← Use ref instead
                   };
                   
                   setMessages(prev => [...prev, aiMessage]);
                   setThinking({ isThinking: false, currentThought: '', thoughts: [], messageId: '' });
+                  // Reset the ref for next message
+                  currentThoughtsRef.current = [];
                   
                 } else if (data.content && !finalResponseReceived) {
                   // Handle other possible response formats
@@ -317,25 +342,44 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
                 <>
                   {/* Show thinking process for AI messages */}
                   {message.thinkingProcess && message.thinkingProcess.length > 0 && (
-                    <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/20 p-4 rounded-lg">
-                      <div className="flex items-center space-x-2 mb-3">
-                        <Brain className="h-4 w-4 text-purple-400" />
-                        <span className="text-sm font-medium text-purple-300">Thinking Process</span>
-                      </div>
-                      <div className="space-y-2">
+                    <details className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/20 rounded-lg">
+                      <summary className="flex items-center space-x-2 p-4 cursor-pointer hover:bg-purple-900/20 transition-colors">
+                      <Brain className="h-4 w-4 text-purple-400" />
+                      <span className="text-sm font-medium text-purple-300">View thinking process...</span>
+                      <span className="ml-auto text-xs text-gray-400">({message.thinkingProcess.length} steps)</span>
+                      </summary>  
+                      <div className="px-4 pb-4 space-y-2 border-t border-purple-500/20 mt-2 pt-3">
                         {message.thinkingProcess.map((thought, index) => (
                           <div key={index} className="text-sm text-gray-300 flex items-start">
-                            <span className="inline-block w-2 h-2 bg-purple-400 rounded-full mr-3 mt-2 flex-shrink-0 opacity-60"></span>
+                            <span className="inline-block w-2 h-2 bg-purple-400 rounded-full mt-1 mr-3 flex-shrink-0"></span>
                             <span>{thought}</span>
                           </div>
                         ))}
                       </div>
-                    </div>
+                    </details>
                   )}
                   
                   {/* AI Response */}
                   <div className="bg-gray-700 text-white p-3 rounded-lg">
-                    <div className="whitespace-pre-wrap">{message.content}</div>
+                    <div className="space-y-4">
+                      {(() => {
+                        const { hasMermaid, mermaidCode, textContent } = extractMermaidCode(message.content);
+      
+                        return (
+                          <>
+                            {textContent && (
+                             <div className="whitespace-pre-wrap">{textContent}</div>
+                            )}
+                            {hasMermaid && (
+                             <MermaidDiagram 
+                                chart={mermaidCode} 
+                                id={`diagram-${message.id}`}
+                              />
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </>
               )}

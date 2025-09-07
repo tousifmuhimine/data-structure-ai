@@ -64,7 +64,7 @@ def web_search(topic: str) -> str:
 
 # --- Groq-powered Diagram Generation Logic ---
 try:
-    diagram_llm = ChatGroq(model_name="llama3-8b-8192")
+    diagram_llm = ChatGroq(model_name="llama3.1-70b-versatile-v2", temperature=0)
     diagram_prompt_template = """You are an expert in Mermaid.js syntax. Your sole purpose is to convert a user's natural language description into valid, clean Mermaid.js code.
 
 - For flowcharts of algorithms, use `graph TD`.
