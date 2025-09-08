@@ -3,7 +3,7 @@ from langchain.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from supabase import create_client, Client
-from ..core.config import SUPABASE_URL, SUPABASE_KEY, BRAVE_API_KEY
+from core.config import SUPABASE_URL, SUPABASE_KEY, BRAVE_API_KEY
 from typing import List, Dict, Optional
 import json
 from sentence_transformers import SentenceTransformer

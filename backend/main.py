@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api import auth, chat 
+from api import auth, chat 
 
 app = FastAPI(title="Data-Structure AI Backend") # UPDATED NAME
 

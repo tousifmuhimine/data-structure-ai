@@ -3,11 +3,11 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, AIMessage
-from ..schemas.chat import ChatRequest, HistoryMessage
-from ..schemas.session import Session
-from ..core.dependencies import get_current_user_and_client
+from schemas.chat import ChatRequest, HistoryMessage
+from schemas.session import Session
+from core.dependencies import get_current_user_and_client
 # UPDATED IMPORT: Now includes learning-aware functions
-from ..services.agent import app_graph, AgentState, astream_with_learning_context
+from services.agent import app_graph, AgentState, astream_with_learning_context
 from typing import List
 from uuid import UUID
 from datetime import datetime

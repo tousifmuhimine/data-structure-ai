@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from supabase import AuthApiError
-from ..schemas.user import SignUpCredentials, UserCredentials
+from schemas.user import SignUpCredentials, UserCredentials
 # THIS IS THE FIX: We now import the correctly named 'supabase_anon' client
-from ..core.dependencies import supabase_anon
+from core.dependencies import supabase_anon
 
 router = APIRouter()
 
