@@ -6,6 +6,7 @@ python-dotenv
 python-multipart
 requests
 email-validator
+sentence-transformers
 
 #Supabase client
 supabase
