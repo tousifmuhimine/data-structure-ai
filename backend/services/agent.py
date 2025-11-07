@@ -62,7 +62,7 @@ system_prompt = SystemMessage(
     After you have laid out your plan in thinking tags, execute it by choosing the most appropriate tool(s). If no tool is needed, provide a direct answer after your thinking block."""
 )
 supervisor_prompt = ChatPromptTemplate.from_messages([system_prompt, ("placeholder", "{messages}")])
-supervisor_llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
+supervisor_llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro")
 supervisor_llm_with_tools = supervisor_llm.bind_tools(tools)
 supervisor_chain = supervisor_prompt | supervisor_llm_with_tools
 
