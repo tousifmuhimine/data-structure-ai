@@ -18,8 +18,15 @@ interface ThinkingState {
   messageId: string; // Track which message this thinking belongs to
 }
 
+// ✅ New interface to replace `any` from backend messages
+interface BackendMessage {
+  type?: 'user' | 'ai';
+  role?: 'user' | 'ai';
+  text: string;
+  thinkingProcess?: string[];
+}
+
 export default function ChatPage({ params }: { params: Promise<{ sessionId?: string[] }> }) {
-  // FIXED: Use React.use() to unwrap the params Promise
   const resolvedParams = React.use(params);
   const sessionId = resolvedParams.sessionId?.[0];
   
@@ -33,10 +40,8 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
     messageId: ''
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  // ADD THIS LINE HERE:
   const currentThoughtsRef = useRef<string[]>([]);
 
-  // ADD THE FUNCTION RIGHT HERE:
   const extractMermaidCode = (content: string) => {
     const mermaidMatch = content.match(/%%MERMAID%%([\s\S]*?)%%\/MERMAID%%/);
     if (mermaidMatch) {
@@ -49,7 +54,6 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
     return { hasMermaid: false, mermaidCode: '', textContent: content };
   };
 
-  // Function to clear error messages
   const clearErrorMessages = () => {
     setMessages(prev => prev.filter(msg => 
       !msg.content.includes('Sorry, I encountered an error') && 
@@ -73,13 +77,13 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
       try {
         const response = await fetch(`/api/sessions/${sessionId}/messages`);
         if (response.ok) {
-          const historyMessages = await response.json();
-          const formattedMessages: Message[] = historyMessages.map((msg: any, index: number) => ({
+          const historyMessages: BackendMessage[] = await response.json();
+          const formattedMessages: Message[] = historyMessages.map((msg, index) => ({
             id: `${index}`,
-            role: msg.type || msg.role,
+            role: msg.type || msg.role || 'ai',  // fallback to 'ai'
             content: msg.text,
             timestamp: new Date(),
-            thinkingProcess: msg.thinkingProcess || undefined // Load thinking process if saved
+            thinkingProcess: msg.thinkingProcess || undefined
           }));
           setMessages(formattedMessages);
         }
@@ -106,10 +110,7 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
     setInput('');
     setIsLoading(true);
     
-    // Create a unique ID for this AI response and start thinking
     const aiMessageId = (Date.now() + 1).toString();
-
-    // ADD THIS LINE RIGHT HERE:
     currentThoughtsRef.current = [];
     setThinking({ 
       isThinking: true, 
@@ -123,12 +124,6 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
         role: msg.role,
         text: msg.content
       }));
-
-      console.log('Sending request to:', `/api/sessions/${sessionId}/messages`);
-      console.log('Request payload:', { 
-        messages: conversationHistory,
-        sessionId: sessionId 
-      });
 
       const requestPayload = {
         messages: conversationHistory,
@@ -145,49 +140,9 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
         body: JSON.stringify(requestPayload)
       });
 
-      console.log('Response status:', response.status);
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Error response body:', errorText);
-        
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        
-        if (response.status === 422) {
-          try {
-            const errorJson = JSON.parse(errorText);
-            console.error('Validation error details:', errorJson);
-            errorMessage = `Validation error: ${JSON.stringify(errorJson)}`;
-          } catch {
-            console.error('422 error (not JSON):', errorText);
-            errorMessage = `Validation error: ${errorText}`;
-          }
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      const contentType = response.headers.get('content-type');
-      console.log('Response content-type:', contentType);
-
-      if (!contentType?.includes('text/event-stream') && !contentType?.includes('text/plain')) {
-        console.warn('Response is not SSE format, content-type:', contentType);
-        const jsonResponse = await response.json();
-        console.log('Non-streaming response:', jsonResponse);
-        
-        // For non-streaming, create final message with current thinking
-        const aiMessage: Message = {
-          id: aiMessageId,
-          role: 'ai',
-          content: jsonResponse.content || jsonResponse.message || 'Received response',
-          timestamp: new Date(),
-          thinkingProcess: [...thinking.thoughts] // Preserve thinking process
-        };
-        
-        setMessages(prev => [...prev, aiMessage]);
-        setThinking({ isThinking: false, currentThought: '', thoughts: [], messageId: '' });
-        return;
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const reader = response.body?.getReader();
@@ -195,30 +150,23 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
       let aiResponse = '';
       let finalResponseReceived = false;
       
-
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           const chunk = decoder.decode(value);
-          console.log('Received chunk:', chunk);
           const lines = chunk.split('\n');
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
                 const dataStr = line.slice(6);
-                if (dataStr.trim() === '') continue;
-                
+                if (!dataStr.trim()) continue;
                 const data = JSON.parse(dataStr);
-                console.log('Parsed SSE data:', data);
-                
-                if (data.type === 'thinking') {
 
-                  // Add to ref (synchronous)
+                if (data.type === 'thinking') {
                   currentThoughtsRef.current = [...currentThoughtsRef.current, data.content];
-                  // Add new thinking step to the progression
                   setThinking(prev => ({ 
                     ...prev,
                     isThinking: true, 
@@ -229,32 +177,17 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
                   finalResponseReceived = true;
                   aiResponse = data.content;
                   
-                  // Create the final AI message with the complete thinking process
                   const aiMessage: Message = {
                     id: aiMessageId,
                     role: 'ai',
                     content: aiResponse,
                     timestamp: new Date(),
-                    thinkingProcess: [...currentThoughtsRef.current] // ← Use ref instead
+                    thinkingProcess: [...currentThoughtsRef.current]
                   };
                   
                   setMessages(prev => [...prev, aiMessage]);
                   setThinking({ isThinking: false, currentThought: '', thoughts: [], messageId: '' });
-                  // Reset the ref for next message
                   currentThoughtsRef.current = [];
-                  
-                } else if (data.content && !finalResponseReceived) {
-                  // Handle other possible response formats
-                  const aiMessage: Message = {
-                    id: aiMessageId,
-                    role: 'ai',
-                    content: data.content,
-                    timestamp: new Date(),
-                    thinkingProcess: [...thinking.thoughts]
-                  };
-                  
-                  setMessages(prev => [...prev, aiMessage]);
-                  setThinking({ isThinking: false, currentThought: '', thoughts: [], messageId: '' });
                 }
               } catch (parseError) {
                 console.error('Error parsing SSE data:', parseError, 'Raw line:', line);
@@ -263,16 +196,12 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
           }
         }
       }
-      
-      // Fallback: if no final response was received through SSE
+
       if (!finalResponseReceived && !aiResponse) {
-        const finalThoughts = [...thinking.thoughts, 'No response received, ending session...'];
-        
-        // Show error completion step
         setThinking(prev => ({ 
           ...prev,
           currentThought: 'No response received, ending session...',
-          thoughts: finalThoughts
+          thoughts: [...thinking.thoughts, 'No response received, ending session...']
         }));
         
         setTimeout(() => {
@@ -281,28 +210,24 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
             role: 'ai',
             content: 'I apologize, but I didn\'t receive a complete response. Please try again.',
             timestamp: new Date(),
-            thinkingProcess: finalThoughts
+            thinkingProcess: [...thinking.thoughts, 'No response received']
           };
-          
           setMessages(prev => [...prev, aiMessage]);
           setThinking({ isThinking: false, currentThought: '', thoughts: [], messageId: '' });
         }, 1000);
       }
-      
+
     } catch (error) {
       console.error('Error sending message:', error);
-      
       setThinking({ isThinking: false, currentThought: '', thoughts: [], messageId: '' });
-      
-      const errorContent = error instanceof Error ? error.message : 'Unknown error occurred';
-      
-      const errorMessage: Message = {
+
+      const aiMessage: Message = {
         id: aiMessageId,
         role: 'ai',
-        content: `Sorry, I encountered an error while processing your request: ${errorContent}. Please try again.`,
+        content: `Sorry, I encountered an error while processing your request: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp: new Date()
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => [...prev, aiMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -321,7 +246,6 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && !thinking.isThinking && (
           <div className="text-center text-gray-400 mt-8">
@@ -331,22 +255,17 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
         
         {messages.map((message) => (
           <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-3xl ${
-              message.role === 'user' 
-                ? 'bg-blue-600 text-white p-3 rounded-lg' 
-                : 'space-y-3'
-            }`}>
+            <div className={`max-w-3xl ${message.role === 'user' ? 'bg-blue-600 text-white p-3 rounded-lg' : 'space-y-3'}`}>
               {message.role === 'user' ? (
                 <div className="whitespace-pre-wrap">{message.content}</div>
               ) : (
                 <>
-                  {/* Show thinking process for AI messages */}
                   {message.thinkingProcess && message.thinkingProcess.length > 0 && (
                     <details className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/20 rounded-lg">
                       <summary className="flex items-center space-x-2 p-4 cursor-pointer hover:bg-purple-900/20 transition-colors">
-                      <Brain className="h-4 w-4 text-purple-400" />
-                      <span className="text-sm font-medium text-purple-300">View thinking process...</span>
-                      <span className="ml-auto text-xs text-gray-400">({message.thinkingProcess.length} steps)</span>
+                        <Brain className="h-4 w-4 text-purple-400" />
+                        <span className="text-sm font-medium text-purple-300">View thinking process...</span>
+                        <span className="ml-auto text-xs text-gray-400">({message.thinkingProcess.length} steps)</span>
                       </summary>  
                       <div className="px-4 pb-4 space-y-2 border-t border-purple-500/20 mt-2 pt-3">
                         {message.thinkingProcess.map((thought, index) => (
@@ -359,23 +278,14 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
                     </details>
                   )}
                   
-                  {/* AI Response */}
                   <div className="bg-gray-700 text-white p-3 rounded-lg">
                     <div className="space-y-4">
                       {(() => {
                         const { hasMermaid, mermaidCode, textContent } = extractMermaidCode(message.content);
-      
                         return (
                           <>
-                            {textContent && (
-                             <div className="whitespace-pre-wrap">{textContent}</div>
-                            )}
-                            {hasMermaid && (
-                             <MermaidDiagram 
-                                chart={mermaidCode} 
-                                id={`diagram-${message.id}`}
-                              />
-                            )}
+                            {textContent && <div className="whitespace-pre-wrap">{textContent}</div>}
+                            {hasMermaid && <MermaidDiagram chart={mermaidCode} id={`diagram-${message.id}`} />}
                           </>
                         );
                       })()}
@@ -387,7 +297,6 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
           </div>
         ))}
         
-        {/* Current Active Thinking (only while AI is thinking) */}
         {thinking.isThinking && (
           <div className="flex justify-start">
             <div className="max-w-3xl space-y-3">
@@ -401,17 +310,9 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
                   {thinking.thoughts.map((thought, index) => (
                     <div 
                       key={index} 
-                      className={`text-sm transition-all duration-500 ease-in-out ${
-                        index === thinking.thoughts.length - 1 
-                          ? 'text-white font-medium opacity-100' 
-                          : 'text-gray-300 opacity-70'
-                      }`}
+                      className={`text-sm transition-all duration-500 ease-in-out ${index === thinking.thoughts.length - 1 ? 'text-white font-medium opacity-100' : 'text-gray-300 opacity-70'}`}
                     >
-                      <span className={`inline-block w-2 h-2 rounded-full mr-3 ${
-                        index === thinking.thoughts.length - 1 
-                          ? 'bg-blue-400 animate-pulse' 
-                          : 'bg-gray-500'
-                      }`}></span>
+                      <span className={`inline-block w-2 h-2 rounded-full mr-3 ${index === thinking.thoughts.length - 1 ? 'bg-blue-400 animate-pulse' : 'bg-gray-500'}`}></span>
                       {thought}
                     </div>
                   ))}
@@ -424,7 +325,6 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
       <div className="border-t border-gray-600 p-4">
         <form onSubmit={handleSubmit} className="flex space-x-2">
           <input
@@ -440,11 +340,7 @@ export default function ChatPage({ params }: { params: Promise<{ sessionId?: str
             disabled={isLoading || !input.trim()}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
           >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             <span>Send</span>
           </button>
         </form>
