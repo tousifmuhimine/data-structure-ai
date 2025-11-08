@@ -3,20 +3,11 @@ import { createClient } from '@/lib/supabase/server';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sessions';
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-// GET: Fetches all chat sessions for the logged-in user
-export async function GET(_req: NextRequest): Promise<NextResponse> {
+export async function GET(_req: NextRequest) {
   try {
     const supabase = await createClient();
-
     const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const backendResponse = await fetch(BACKEND_URL, {
       method: 'GET',
@@ -34,20 +25,16 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
     const data = await backendResponse.json();
     return NextResponse.json(data);
   } catch (error) {
-    return NextResponse.json({ error: 'Internal server error', details: getErrorMessage(error) }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    return NextResponse.json({ error: 'Internal server error', details: errorMessage }, { status: 500 });
   }
 }
 
-// POST: Creates a new chat session for the logged-in user
-export async function POST(_req: NextRequest): Promise<NextResponse> {
+export async function POST(_req: NextRequest) {
   try {
     const supabase = await createClient();
-
     const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const backendResponse = await fetch(BACKEND_URL, {
       method: 'POST',
@@ -65,9 +52,7 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
     const data = await backendResponse.json();
     return NextResponse.json(data);
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      return NextResponse.json({ error: 'Backend request timed out' }, { status: 504 });
-    }
-    return NextResponse.json({ error: 'Internal server error', details: getErrorMessage(error) }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    return NextResponse.json({ error: 'Internal server error', details: errorMessage }, { status: 500 });
   }
 }

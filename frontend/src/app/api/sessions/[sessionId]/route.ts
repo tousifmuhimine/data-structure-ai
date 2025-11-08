@@ -1,25 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sessions';
 
-// DELETE: Deletes a specific chat session for the logged-in user
 export async function DELETE(
-  _req: NextRequest, 
-  { params }: { params: { sessionId: string } }
-): Promise<NextResponse> {
+  req: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
   try {
     const supabase = await createClient();
     const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
 
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { sessionId } = await params;
 
-    const deleteUrl = `${BACKEND_URL}/${params.sessionId}`;
-    const backendResponse = await fetch(deleteUrl, {
+    const backendResponse = await fetch(`${BACKEND_URL}/${sessionId}`, {
       method: 'DELETE',
-      headers: { 
+      headers: {
         'Authorization': `Bearer ${session.access_token}`,
         'Content-Type': 'application/json'
       },
@@ -27,14 +24,13 @@ export async function DELETE(
 
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
-      return NextResponse.json({ error: 'Backend request failed', details: errorText }, { status: backendResponse.status });
+      return new Response(JSON.stringify({ error: 'Backend request failed', details: errorText }), { status: backendResponse.status });
     }
 
     const data = await backendResponse.json();
-    return NextResponse.json(data);
-
+    return new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    return new Response(JSON.stringify({ error: errorMessage }), { status: 500 });
   }
 }
