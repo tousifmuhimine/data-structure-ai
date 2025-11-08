@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
     const token = session.access_token;
     const { message } = await req.json();
-    const backendUrl = 'http://127.0.0.1:8000/api/chat';
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/chat';
 
     const backendResponse = await fetch(backendUrl, {
       method: 'POST',

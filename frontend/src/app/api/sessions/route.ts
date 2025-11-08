@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-const BACKEND_URL = 'http://127.0.0.1:8000/api/sessions';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sessions';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

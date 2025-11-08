@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-const BACKEND_URL = 'http://127.0.0.1:8000/api/sessions';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sessions';
 
 // DELETE: Deletes a specific chat session for the logged-in user
 export async function DELETE(
