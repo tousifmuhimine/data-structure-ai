@@ -5,119 +5,76 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-# UPDATED IMPORT: Now includes new self-learning tools
-from .tools import (
-    query_supabase, web_search, generate_diagram,  # Existing tools
-    query_knowledge_cache, smart_knowledge_search,  # New self-learning tools
-    cache_knowledge  # Learning function
-)
+from .tools import query_supabase, web_search, generate_diagram
 
-# --- Agent State and Graph Definition ---
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], operator.add]
-    # NEW: Track current session for learning
-    session_id: str = None
-    user_id: str = None
+    session_id: str
+    user_id: str
 
-# UPDATED: Now includes both original and new self-learning tools
-tools = [
-    # Original tools (preserved)
-    query_supabase, 
-    web_search, 
-    generate_diagram,
-    # New self-learning tools
-    query_knowledge_cache,
-    smart_knowledge_search
-]
+tools = [query_supabase, web_search, generate_diagram]
 tool_node = ToolNode(tools)
 
-# ENHANCED: The AI now mentions its learning capabilities alongside DSA expertise
 system_prompt = SystemMessage(
-    content="""You are an expert tutor for Data Structures and Algorithms (DSA) with self-learning capabilities. Your goal is to be as helpful as possible, explaining complex concepts clearly while continuously learning from interactions.
+    content="""You are an expert Data Structures and Algorithms tutor with intelligent tool routing.
 
-    CRITICAL: You MUST ALWAYS follow this exact format for EVERY response:
+CRITICAL: You MUST ALWAYS follow this format for EVERY response:
 
-    <thinking>
-    [Always explain your reasoning here, even for simple greetings or basic questions]
-    - What is the user asking?
-    - Do I have this information readily available?
-    - Should I check my memory first (knowledge_cache) for similar past interactions?
-    - Do I need to use tools? Available tools:
-      * smart_knowledge_search: Combines both my memory and textbook knowledge
-      * query_knowledge_cache: Searches my memory of past interactions  
-      * query_supabase: Searches the structured knowledge base (textbook)
-      * web_search: For current information not in my knowledge base
-      * generate_diagram: Creates visual representations
-    - What's the best approach to help them?
-    </thinking>
+<thinking>
+[Explain your reasoning here]
+- What is the user asking?
+- Which tool should I use?
+  * generate_diagram: For flowcharts, trees, graphs, algorithm visualizations
+  * web_search: For recent information, current trends, or topics not in my knowledge
+  * query_supabase: For standard DSA concepts (fallback only)
+- What's my strategy?
+</thinking>
 
-    [Your actual response here]
+[Your actual response here]
 
-    LEARNING STRATEGY:
-    - For DSA questions, prefer smart_knowledge_search (combines memory + textbook)
-    - Use query_knowledge_cache when looking for similar past problem-solving approaches
-    - Use traditional query_supabase only when you need specific structured knowledge
-    - Always aim to provide comprehensive, educational responses that I can learn from
+TOOL ROUTING RULES:
+1. **Diagram Requests** (keywords: "draw", "diagram", "visualize", "flowchart", "show me"):
+   → Use generate_diagram
+   → This will create Mermaid diagram + explanation + cache it
 
-    After you have laid out your plan in thinking tags, execute it by choosing the most appropriate tool(s). If no tool is needed, provide a direct answer after your thinking block."""
+2. **Recent/Current Information** (keywords: "latest", "recent", "current", "2024", "2025"):
+   → Use web_search
+   → Results are automatically cached
+
+3. **Standard DSA Concepts** (keywords: "what is", "explain", "how does"):
+   → Answer directly using your knowledge
+   → Only use query_supabase if you're unsure
+
+4. **Greetings/Casual** (keywords: "hello", "hi", "thanks"):
+   → Answer directly, no tools needed
+
+After your <thinking> block, execute your plan. Be concise and educational."""
 )
+
 supervisor_prompt = ChatPromptTemplate.from_messages([system_prompt, ("placeholder", "{messages}")])
-supervisor_llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro")
+supervisor_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-exp", temperature=0.3)
 supervisor_llm_with_tools = supervisor_llm.bind_tools(tools)
 supervisor_chain = supervisor_prompt | supervisor_llm_with_tools
 
 def supervisor_node(state: AgentState) -> dict:
-    """The primary node that decides what to do."""
+    """Main decision node with smart routing."""
     print("---SUPERVISOR---")
     response = supervisor_chain.invoke({"messages": state["messages"]})
     return {"messages": [response]}
 
-# ENHANCED: Now includes learning logic
 def present_tool_result_node(state: AgentState) -> dict:
-    """This node takes the result from the tool, formats it as the final AI message, and learns from the interaction."""
+    """Presents tool results as final answer."""
     print("---PRESENTER---")
     tool_message = state["messages"][-1]
     final_answer = AIMessage(content=tool_message.content)
-    
-    # NEW: Learning Logic - Extract and cache valuable interactions
-    try:
-        # Look for the original user question
-        user_messages = [msg for msg in state["messages"] if hasattr(msg, 'content') and not isinstance(msg, AIMessage)]
-        if user_messages and len(user_messages) > 0:
-            last_user_question = user_messages[-1].content
-            
-            # Get the final answer content
-            answer_content = final_answer.content
-            
-            # Cache the knowledge if it's valuable
-            if last_user_question and answer_content:
-                session_id = state.get("session_id")
-                user_id = state.get("user_id")
-                
-                success = cache_knowledge(
-                    question=last_user_question,
-                    answer=answer_content,
-                    session_id=session_id,
-                    user_id=user_id
-                )
-                
-                if success:
-                    print(f"✅ Learned from interaction: {last_user_question[:50]}...")
-                else:
-                    print("📝 Interaction not cached (not valuable enough or error occurred)")
-    
-    except Exception as e:
-        print(f"⚠️ Learning error (non-critical): {e}")
-        # Continue normally - learning errors shouldn't break the chat
-    
     return {"messages": [final_answer]}
 
 def should_continue(state: AgentState) -> str:
-    """Determines whether to continue the graph or end."""
+    """Determines whether to continue or end."""
     last_message = state["messages"][-1]
     return "continue" if isinstance(last_message, AIMessage) and last_message.tool_calls else "end"
 
-# Define the graph (same structure as before)
+# Build graph
 workflow = StateGraph(AgentState)
 workflow.add_node("supervisor", supervisor_node)
 workflow.add_node("tools", tool_node)
@@ -129,19 +86,8 @@ workflow.set_entry_point("supervisor")
 
 app_graph = workflow.compile()
 
-# NEW: Enhanced invocation function that supports learning context
-def invoke_with_learning_context(messages, session_id=None, user_id=None):
-    """Invoke the agent with learning context for better knowledge caching."""
-    inputs = {
-        "messages": messages,
-        "session_id": session_id,
-        "user_id": user_id
-    }
-    return app_graph.invoke(inputs)
-
-# NEW: Streaming version with learning context
 async def astream_with_learning_context(messages, session_id=None, user_id=None):
-    """Async streaming version with learning context."""
+    """Async streaming with session context."""
     inputs = {
         "messages": messages,
         "session_id": session_id,
