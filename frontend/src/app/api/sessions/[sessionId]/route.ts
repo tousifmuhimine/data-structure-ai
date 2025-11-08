@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/server';
 
 const BACKEND_URL = 'http://127.0.0.1:8000/api/sessions';
 
@@ -10,10 +9,7 @@ export async function DELETE(
   { params }: { params: { sessionId: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ 
-      cookies: () => cookieStore 
-    });
+    const supabase = await createClient();
     
     const { data: { session } } = await supabase.auth.getSession();
 

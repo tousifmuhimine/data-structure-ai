@@ -43,13 +43,28 @@ export default function ChatLayout({
   };
 
   const handleNewChat = async () => {
-    const res = await fetch('/api/sessions', { method: 'POST' });
-    if (res.ok) {
-      const newSession = await res.json();
-      // Force a reload to update the session list
-      window.location.href = `/chat/${newSession.id}`;
-    } else {
-      console.error("Failed to create new chat session");
+    console.log('Creating new chat session...');
+    try {
+      const res = await fetch('/api/sessions', { 
+        method: 'POST',
+        credentials: 'include' // Ensure cookies are sent
+      });
+      
+      console.log('Response status:', res.status);
+      
+      if (res.ok) {
+        const newSession = await res.json();
+        console.log('New session created:', newSession);
+        // Force a reload to update the session list
+        window.location.href = `/chat/${newSession.id}`;
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.error("Failed to create new chat session", errorData);
+        alert(`Failed to create chat: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error creating chat:', error);
+      alert('Network error while creating chat');
     }
   };
 

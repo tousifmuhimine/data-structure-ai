@@ -1,18 +1,14 @@
 import { NextRequest } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/server';
 
-const BACKEND_URL = 'http://127.0.0.1:8000/api/chat'; // Fixed: added /api prefix back
+const BACKEND_URL = 'http://127.0.0.1:8000/api/chat';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { sessionId: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ 
-      cookies: () => cookieStore 
-    });
+    const supabase = await createClient();
     
     const { data: { session } } = await supabase.auth.getSession();
     
@@ -54,11 +50,7 @@ export async function POST(
   { params }: { params: { sessionId: string } }
 ) {
   try {
-    // ACTUALLY CORRECTED: Await cookies before using them
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ 
-      cookies: () => cookieStore 
-    });
+    const supabase = await createClient();
     
     const { data: { session } } = await supabase.auth.getSession();
     
