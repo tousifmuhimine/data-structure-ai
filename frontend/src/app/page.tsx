@@ -194,7 +194,7 @@ export default function Home() {
                 onClick={() => window.location.href = "https://data-structure-ai.onrender.com"}
                 className="inline-flex items-center px-8 py-4 text-lg font-semibold rounded-lg bg-purple-600 hover:bg-purple-700 transition transform hover:scale-105"
             >
-                {user ? 'Go to Site' : 'Create Free Account'}
+                {user ? 'Go to Site' : 'Go To Site'}
             </button>
         </div>
       </section>
