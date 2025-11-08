@@ -3,76 +3,86 @@ import { createClient } from '@/lib/supabase/server';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/chat';
 
+interface Params {
+  sessionId: string;
+}
+
 export async function GET(
   req: NextRequest,
-  { params }: { params: { sessionId: string } }
+  context: { params: Params }
 ) {
   try {
     const supabase = await createClient();
-    
-    const { data: { session } } = await supabase.auth.getSession();
-    
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
     if (!session) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+      });
     }
 
-    // Query messages for this session from Supabase
     const { data: messages, error } = await supabase
       .from('chat_messages')
       .select('role, content')
-      .eq('session_id', params.sessionId)
+      .eq('session_id', context.params.sessionId)
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: true });
 
     if (error) {
       console.error('Error fetching messages:', error);
-      return new Response(JSON.stringify({ error: 'Failed to fetch messages' }), { status: 500 });
+      return new Response(JSON.stringify({ error: 'Failed to fetch messages' }), {
+        status: 500,
+      });
     }
 
-    // Convert to the format your frontend expects
-    const formattedMessages = messages?.map(msg => ({
-      role: msg.role,
-      text: msg.content
-    })) || [];
+    const formattedMessages =
+      messages?.map((msg) => ({
+        role: msg.role,
+        text: msg.content,
+      })) || [];
 
     return new Response(JSON.stringify(formattedMessages), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
     });
-
   } catch (error) {
     console.error('GET messages error:', error);
-    return new Response(JSON.stringify({ error: 'Failed to load messages' }), { status: 500 });
+    return new Response(JSON.stringify({ error: 'Failed to load messages' }), {
+      status: 500,
+    });
   }
 }
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { sessionId: string } }
+  context: { params: Params }
 ) {
   try {
     const supabase = await createClient();
-    
-    const { data: { session } } = await supabase.auth.getSession();
-    
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
     if (!session) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+      });
     }
-    
+
     const { messages } = await req.json();
 
-    console.log('Sending request to:', `${BACKEND_URL}/${params.sessionId}`);
-
-    const backendResponse = await fetch(`${BACKEND_URL}/${params.sessionId}`, {
+    const backendResponse = await fetch(`${BACKEND_URL}/${context.params.sessionId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
-        'Authorization': `Bearer ${session.access_token}`
+        Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ messages }), // Pass the full message history
+      body: JSON.stringify({ messages }),
     });
-
-    console.log('Backend response status:', backendResponse.status);
 
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
@@ -81,29 +91,22 @@ export async function POST(
     }
 
     if (!backendResponse.body) {
-      return new Response("The backend response does not contain a body.", { status: 500 });
+      return new Response('The backend response does not contain a body.', { status: 500 });
     }
 
-    // Stream the response from backend to frontend
     const stream = new ReadableStream({
       async start(controller) {
         const reader = backendResponse.body!.getReader();
         const decoder = new TextDecoder();
-        
+
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
-            // Optional: Log chunks for debugging
-            const chunk = decoder.decode(value, { stream: true });
-            console.log('Streaming chunk:', chunk.substring(0, 100) + '...');
-            
             controller.enqueue(value);
           }
-        } catch (error) {
-          console.error('Streaming error:', error);
-          controller.error(error);
+        } catch (err) {
+          controller.error(err);
         } finally {
           reader.releaseLock();
           controller.close();
@@ -115,18 +118,16 @@ export async function POST(
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
+        Connection: 'keep-alive',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       },
     });
-
   } catch (error) {
     console.error('POST streaming error:', error);
-    if (error instanceof Error) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500 });
-    }
-    return new Response(JSON.stringify({ error: 'An unknown error occurred' }), { status: 500 });
+    return new Response(JSON.stringify({ error: (error as Error).message || 'Unknown error' }), {
+      status: 500,
+    });
   }
 }
