@@ -52,7 +52,7 @@ After your <thinking> block, execute your plan. Be concise and educational."""
 )
 
 supervisor_prompt = ChatPromptTemplate.from_messages([system_prompt, ("placeholder", "{messages}")])
-supervisor_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-exp", temperature=0.3)
+supervisor_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
 supervisor_llm_with_tools = supervisor_llm.bind_tools(tools)
 supervisor_chain = supervisor_prompt | supervisor_llm_with_tools
 
